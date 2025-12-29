@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 
 export default function CreateBetModal({ onClose }) {
-  const { userProfile } = useAuthStore()
+  const { user, userProfile } = useAuthStore()
   const [question, setQuestion] = useState('')
   const [closesAt, setClosesAt] = useState('')
   const [loading, setLoading] = useState(false)
@@ -12,6 +12,11 @@ export default function CreateBetModal({ onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+
+    if (!user || !userProfile) {
+      setError('You must be logged in to create a bet')
+      return
+    }
 
     if (!question.trim()) {
       setError('Question is required')
@@ -32,21 +37,65 @@ export default function CreateBetModal({ onClose }) {
     setLoading(true)
 
     try {
-      const { error: insertError } = await supabase
+      // Use auth.uid() directly to ensure it matches RLS policy check
+      const userId = user?.id || userProfile?.id
+      
+      if (!userId) {
+        throw new Error('User ID not found. Please sign in again.')
+      }
+      
+      console.log('Creating bet with user ID:', userId)
+      console.log('Bet data:', {
+        created_by: userId,
+        question: question.trim(),
+        closes_at: closingTime.toISOString(),
+        status: 'open',
+      })
+      
+      const { data, error: insertError } = await supabase
         .from('bets')
         .insert([{
-          created_by: userProfile.id,
+          created_by: userId,
           question: question.trim(),
           closes_at: closingTime.toISOString(),
           status: 'open',
         }])
+        .select()
 
-      if (insertError) throw insertError
+      if (insertError) {
+        console.error('Insert error details:', {
+          message: insertError.message,
+          details: insertError.details,
+          hint: insertError.hint,
+          code: insertError.code,
+        })
+        
+        // Provide more helpful error messages
+        if (insertError.code === '42501') {
+          throw new Error('Permission denied. You may not have permission to create bets.')
+        } else if (insertError.code === '23503') {
+          throw new Error('Invalid user. Please sign in again.')
+        } else if (insertError.code === '23505') {
+          throw new Error('This bet already exists.')
+        }
+        
+        throw insertError
+      }
 
+      if (!data || data.length === 0) {
+        throw new Error('Bet was created but no data was returned.')
+      }
+
+      console.log('Bet created successfully:', data)
+      
+      // Small delay to ensure real-time subscription picks up the change
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
       onClose()
     } catch (err) {
       console.error('Error creating bet:', err)
-      setError(err.message)
+      const errorMessage = err.message || err.toString() || 'Failed to create bet. Please try again.'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }

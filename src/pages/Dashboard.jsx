@@ -12,6 +12,7 @@ export default function Dashboard() {
   const [showCreateBet, setShowCreateBet] = useState(false)
   const [showRefillRequest, setShowRefillRequest] = useState(false)
   const [showAdminPanel, setShowAdminPanel] = useState(false)
+  const [refreshBetList, setRefreshBetList] = useState(() => () => {})
 
   // Set up real-time subscription for user balance updates
   useEffect(() => {
@@ -77,12 +78,20 @@ export default function Dashboard() {
         )}
 
         {/* Bet List */}
-        <BetList />
+        <BetList onRefreshReady={setRefreshBetList} />
       </div>
 
       {/* Modals */}
       {showCreateBet && (
-        <CreateBetModal onClose={() => setShowCreateBet(false)} />
+        <CreateBetModal 
+          onClose={() => {
+            setShowCreateBet(false)
+            // Refresh bet list after creating a bet
+            setTimeout(() => {
+              refreshBetList()
+            }, 200) // Small delay to ensure database write is complete
+          }} 
+        />
       )}
 
       {showRefillRequest && (

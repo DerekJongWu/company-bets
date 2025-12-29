@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 import BetCard from './BetCard'
 
-export default function BetList() {
+export default function BetList({ onRefreshReady }) {
   const { userProfile } = useAuthStore()
   const [bets, setBets] = useState([])
   const [loading, setLoading] = useState(true)
@@ -97,10 +97,15 @@ export default function BetList() {
       )
       .subscribe()
 
+    // Expose refresh function to parent component
+    if (onRefreshReady) {
+      onRefreshReady(() => fetchBets())
+    }
+
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [userProfile.id])
+  }, [userProfile.id, onRefreshReady])
 
   const filteredBets = bets.filter(bet => {
     const now = new Date()

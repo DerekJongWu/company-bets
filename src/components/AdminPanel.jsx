@@ -7,6 +7,7 @@ export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState('resolve')
   const [bets, setBets] = useState([])
   const [refillRequests, setRefillRequests] = useState([])
+  const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -14,7 +15,10 @@ export default function AdminPanel() {
   useEffect(() => {
     fetchBets()
     fetchRefillRequests()
-  }, [])
+    if (activeTab === 'admins') {
+      fetchUsers()
+    }
+  }, [activeTab])
 
   const fetchBets = async () => {
     const { data, error } = await supabase
@@ -34,6 +38,15 @@ export default function AdminPanel() {
       .order('requested_at', { ascending: false })
 
     if (!error) setRefillRequests(data || [])
+  }
+
+  const fetchUsers = async () => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, balance, is_admin, created_at')
+      .order('created_at', { ascending: false })
+
+    if (!error) setUsers(data || [])
   }
 
   const handleResolveBet = async (betId, resolution) => {
@@ -244,6 +257,34 @@ export default function AdminPanel() {
     }
   }
 
+  const handleToggleAdmin = async (userId, currentAdminStatus, userEmail) => {
+    const action = currentAdminStatus ? 'remove admin privileges from' : 'make an admin'
+    if (!confirm(`Are you sure you want to ${action} ${userEmail}?`)) {
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    setSuccess('')
+
+    try {
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ is_admin: !currentAdminStatus })
+        .eq('id', userId)
+
+      if (updateError) throw updateError
+
+      setSuccess(`${userEmail} ${currentAdminStatus ? 'removed from' : 'promoted to'} admin.`)
+      fetchUsers()
+    } catch (err) {
+      console.error('Error toggling admin status:', err)
+      setError(err.message || 'Failed to update admin status.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <h2 className="text-2xl font-bold mb-6 text-yellow-600">Admin Panel</h2>
@@ -281,6 +322,16 @@ export default function AdminPanel() {
           }`}
         >
           Refill Requests ({refillRequests.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('admins')}
+          className={`px-4 py-2 font-medium ${
+            activeTab === 'admins'
+              ? 'border-b-2 border-yellow-600 text-yellow-600'
+              : 'text-gray-600 hover:text-gray-800'
+          }`}
+        >
+          Manage Admins
         </button>
       </div>
 
@@ -366,6 +417,54 @@ export default function AdminPanel() {
                       Deny
                     </button>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Manage Admins Tab */}
+      {activeTab === 'admins' && (
+        <div>
+          <h3 className="text-lg font-semibold mb-4">User Management</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Promote or demote users to/from admin status. Admins can resolve bets, approve refills, and manage other admins.
+          </p>
+          {users.length === 0 ? (
+            <p className="text-gray-500">No users found.</p>
+          ) : (
+            <div className="space-y-3">
+              {users.map(user => (
+                <div key={user.id} className="border rounded-lg p-4 flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3">
+                      <p className="font-semibold">{user.email}</p>
+                      {user.is_admin && (
+                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-semibold rounded">
+                          ADMIN
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Balance: ${user.balance?.toFixed(2) || '0.00'}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Joined: {new Date(user.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleToggleAdmin(user.id, user.is_admin, user.email)}
+                    disabled={loading || user.id === userProfile.id}
+                    className={`px-4 py-2 rounded font-medium transition ${
+                      user.is_admin
+                        ? 'bg-red-600 text-white hover:bg-red-700'
+                        : 'bg-yellow-600 text-white hover:bg-yellow-700'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    title={user.id === userProfile.id ? 'You cannot change your own admin status' : ''}
+                  >
+                    {user.is_admin ? 'Remove Admin' : 'Make Admin'}
+                  </button>
                 </div>
               ))}
             </div>

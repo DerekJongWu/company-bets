@@ -1,7 +1,52 @@
+-- ============================================
 -- Row Level Security Policies for Company Bets App
--- Run these in your Supabase SQL Editor
+-- ============================================
+-- Run this entire script in your Supabase SQL Editor
+-- This will enable RLS and create all necessary policies
 
--- First, enable RLS on all tables
+-- ============================================
+-- STEP 1: Drop existing policies (if any)
+-- ============================================
+-- IMPORTANT: Drop policies BEFORE dropping the function they depend on
+-- This prevents errors if you run the script multiple times
+
+-- Users table policies
+DROP POLICY IF EXISTS "Users can view profiles" ON users;
+DROP POLICY IF EXISTS "Users can update own profile" ON users;
+DROP POLICY IF EXISTS "Admins can update any profile" ON users;
+DROP POLICY IF EXISTS "Users can insert own profile" ON users;
+
+-- Bets table policies
+DROP POLICY IF EXISTS "Anyone can view bets" ON bets;
+DROP POLICY IF EXISTS "Users can create bets" ON bets;
+DROP POLICY IF EXISTS "Admins can update bets" ON bets;
+
+-- User predictions table policies
+DROP POLICY IF EXISTS "Anyone can view predictions" ON user_predictions;
+DROP POLICY IF EXISTS "Users can insert own predictions" ON user_predictions;
+DROP POLICY IF EXISTS "Users can update own predictions" ON user_predictions;
+
+-- Refill requests table policies
+DROP POLICY IF EXISTS "Users can view own refill requests" ON refill_requests;
+DROP POLICY IF EXISTS "Users can create refill requests" ON refill_requests;
+DROP POLICY IF EXISTS "Admins can update refill requests" ON refill_requests;
+
+-- Transactions table policies
+DROP POLICY IF EXISTS "Users can view own transactions" ON transactions;
+DROP POLICY IF EXISTS "Authenticated users can insert transactions" ON transactions;
+DROP POLICY IF EXISTS "Admins can view all transactions" ON transactions;
+
+-- ============================================
+-- STEP 1b: Drop existing functions (if any)
+-- ============================================
+-- Now we can safely drop the function since no policies depend on it
+
+DROP FUNCTION IF EXISTS is_admin(UUID);
+
+-- ============================================
+-- STEP 2: Enable RLS on all tables
+-- ============================================
+
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_predictions ENABLE ROW LEVEL SECURITY;
@@ -9,18 +54,36 @@ ALTER TABLE refill_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
--- USERS TABLE POLICIES
+-- STEP 3: HELPER FUNCTION FOR ADMIN CHECK
+-- ============================================
+-- This function bypasses RLS to check if a user is an admin
+-- Prevents infinite recursion in policies
+
+CREATE OR REPLACE FUNCTION is_admin(user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM users
+    WHERE users.id = user_id AND users.is_admin = true
+  );
+END;
+$$;
+
+-- ============================================
+-- STEP 4: USERS TABLE POLICIES
 -- ============================================
 
 -- Users can view their own profile OR admins can view all
+-- Uses the helper function to avoid infinite recursion
 CREATE POLICY "Users can view profiles" ON users
   FOR SELECT
   USING (
     auth.uid() = id
-    OR EXISTS (
-      SELECT 1 FROM users
-      WHERE users.id = auth.uid() AND users.is_admin = true
-    )
+    OR is_admin(auth.uid())
   );
 
 -- Users can update their own profile (balance updates)
@@ -28,11 +91,16 @@ CREATE POLICY "Users can update own profile" ON users
   FOR UPDATE
   USING (auth.uid() = id);
 
--- Allow inserts for new user signups
--- Note: This allows authenticated users to insert their own profile during signup
+-- Admins can update any user's profile (for making admins, etc.)
+CREATE POLICY "Admins can update any profile" ON users
+  FOR UPDATE
+  USING (is_admin(auth.uid()));
+
+-- Users can only insert their own profile during signup
+-- This ensures users can't create profiles for other users
 CREATE POLICY "Users can insert own profile" ON users
   FOR INSERT
-  WITH CHECK (true);
+  WITH CHECK (auth.uid() = id);
 
 -- ============================================
 -- BETS TABLE POLICIES
@@ -51,12 +119,7 @@ CREATE POLICY "Users can create bets" ON bets
 -- Admins can update bets (for resolving/cancelling)
 CREATE POLICY "Admins can update bets" ON bets
   FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM users
-      WHERE users.id = auth.uid() AND users.is_admin = true
-    )
-  );
+  USING (is_admin(auth.uid()));
 
 -- ============================================
 -- USER PREDICTIONS TABLE POLICIES
@@ -86,10 +149,7 @@ CREATE POLICY "Users can view own refill requests" ON refill_requests
   FOR SELECT
   USING (
     auth.uid() = user_id
-    OR EXISTS (
-      SELECT 1 FROM users
-      WHERE users.id = auth.uid() AND users.is_admin = true
-    )
+    OR is_admin(auth.uid())
   );
 
 -- Users can create refill requests
@@ -100,12 +160,7 @@ CREATE POLICY "Users can create refill requests" ON refill_requests
 -- Admins can update refill requests (approve/deny)
 CREATE POLICY "Admins can update refill requests" ON refill_requests
   FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM users
-      WHERE users.id = auth.uid() AND users.is_admin = true
-    )
-  );
+  USING (is_admin(auth.uid()));
 
 -- ============================================
 -- TRANSACTIONS TABLE POLICIES
@@ -124,12 +179,7 @@ CREATE POLICY "Authenticated users can insert transactions" ON transactions
 -- Admins can view all transactions
 CREATE POLICY "Admins can view all transactions" ON transactions
   FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM users
-      WHERE users.id = auth.uid() AND users.is_admin = true
-    )
-  );
+  USING (is_admin(auth.uid()));
 
 -- ============================================
 -- HELPER FUNCTION (OPTIONAL)

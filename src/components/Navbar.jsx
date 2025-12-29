@@ -10,12 +10,21 @@ export default function Navbar() {
     navigate('/login')
   }
 
+  const handleLogoClick = () => {
+    navigate('/')
+  }
+
   return (
     <nav className="bg-indigo-600 text-white shadow-lg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center">
-            <h1 className="text-xl font-bold">Company Bets</h1>
+            <button
+              onClick={handleLogoClick}
+              className="text-xl font-bold hover:text-indigo-200 transition cursor-pointer"
+            >
+              Company Bets
+            </button>
           </div>
 
           <div className="flex items-center space-x-4">

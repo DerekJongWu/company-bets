@@ -16,6 +16,11 @@ export default function Signup() {
     e.preventDefault()
     setError('')
 
+    if (!email.trim()) {
+      setError('Please enter your email')
+      return
+    }
+
     if (password !== confirmPassword) {
       setError('Passwords do not match')
       return
@@ -29,12 +34,12 @@ export default function Signup() {
     setLoading(true)
 
     try {
-      await signUp(email, password)
+      await signUp(email.trim(), password)
       navigate('/login', {
-        state: { message: 'Account created! Please sign in.' }
+        state: { message: 'Account created successfully! Please sign in.' }
       })
     } catch (err) {
-      setError(err.message)
+      setError(err.message || 'Failed to create account. Please try again.')
     } finally {
       setLoading(false)
     }
