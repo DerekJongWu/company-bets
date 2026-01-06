@@ -86,10 +86,18 @@ export default function Dashboard() {
         <CreateBetModal 
           onClose={() => {
             setShowCreateBet(false)
-            // Refresh bet list after creating a bet
-            setTimeout(() => {
-              refreshBetList()
-            }, 200) // Small delay to ensure database write is complete
+            // Real-time subscription will automatically refresh the bet list
+            // Optionally trigger manual refresh if needed
+            if (typeof refreshBetList === 'function') {
+              // Use a longer timeout to ensure the insert has completed
+              setTimeout(() => {
+                try {
+                  refreshBetList()
+                } catch (err) {
+                  console.error('Error refreshing bet list:', err)
+                }
+              }, 500)
+            }
           }} 
         />
       )}

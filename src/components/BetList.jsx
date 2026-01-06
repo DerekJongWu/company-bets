@@ -68,6 +68,8 @@ export default function BetList({ onRefreshReady }) {
   }
 
   useEffect(() => {
+    if (!userProfile?.id) return
+
     fetchBets()
 
     // Set up real-time subscription
@@ -97,15 +99,17 @@ export default function BetList({ onRefreshReady }) {
       )
       .subscribe()
 
-    // Expose refresh function to parent component
-    if (onRefreshReady) {
-      onRefreshReady(() => fetchBets())
-    }
-
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [userProfile.id, onRefreshReady])
+  }, [userProfile?.id])
+
+  // Expose refresh function to parent component
+  useEffect(() => {
+    if (onRefreshReady) {
+      onRefreshReady(() => fetchBets())
+    }
+  }, [onRefreshReady])
 
   const filteredBets = bets.filter(bet => {
     const now = new Date()

@@ -28,7 +28,16 @@ export default function CreateBetModal({ onClose }) {
       return
     }
 
+    // Parse datetime-local value correctly (it's in local time, no timezone)
+    // datetime-local format: "YYYY-MM-DDTHH:mm"
     const closingTime = new Date(closesAt)
+    
+    // Check if date is valid
+    if (isNaN(closingTime.getTime())) {
+      setError('Invalid date. Please select a valid date and time.')
+      return
+    }
+    
     if (closingTime <= new Date()) {
       setError('Closing time must be in the future')
       return
@@ -44,23 +53,41 @@ export default function CreateBetModal({ onClose }) {
         throw new Error('User ID not found. Please sign in again.')
       }
       
+      // Ensure the date is valid and properly formatted
+      const closesAtISO = closingTime.toISOString()
+      
       console.log('Creating bet with user ID:', userId)
+      console.log('Input datetime-local value:', closesAt)
+      console.log('Parsed Date object:', closingTime)
+      console.log('ISO string for database:', closesAtISO)
       console.log('Bet data:', {
         created_by: userId,
         question: question.trim(),
-        closes_at: closingTime.toISOString(),
+        closes_at: closesAtISO,
         status: 'open',
       })
       
-      const { data, error: insertError } = await supabase
+      // Add timeout to prevent hanging
+      const insertPromise = supabase
         .from('bets')
         .insert([{
           created_by: userId,
           question: question.trim(),
-          closes_at: closingTime.toISOString(),
+          closes_at: closesAtISO,
           status: 'open',
         }])
         .select()
+
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Request timed out. Please check your connection and try again.'))
+        }, 30000) // 30 second timeout
+      })
+
+      const { data, error: insertError } = await Promise.race([
+        insertPromise,
+        timeoutPromise
+      ])
 
       if (insertError) {
         console.error('Insert error details:', {
@@ -91,7 +118,14 @@ export default function CreateBetModal({ onClose }) {
       // Small delay to ensure real-time subscription picks up the change
       await new Promise(resolve => setTimeout(resolve, 100))
       
-      onClose()
+      // Close modal - ensure it's called even if there are errors
+      console.log('Closing modal...')
+      if (typeof onClose === 'function') {
+        onClose()
+      } else {
+        console.warn('onClose is not a function:', onClose)
+      }
+      console.log('Modal close called')
     } catch (err) {
       console.error('Error creating bet:', err)
       const errorMessage = err.message || err.toString() || 'Failed to create bet. Please try again.'
@@ -102,9 +136,14 @@ export default function CreateBetModal({ onClose }) {
   }
 
   // Get current datetime in local timezone for min attribute
+  // datetime-local inputs expect local time, so we need to format the current time in local timezone
   const now = new Date()
-  now.setMinutes(now.getMinutes() - now.getTimezoneOffset())
-  const minDateTime = now.toISOString().slice(0, 16)
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  const hours = String(now.getHours()).padStart(2, '0')
+  const minutes = String(now.getMinutes()).padStart(2, '0')
+  const minDateTime = `${year}-${month}-${day}T${hours}:${minutes}`
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
